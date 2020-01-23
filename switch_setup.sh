@@ -11,5 +11,5 @@ sudo ifconfig ethx 0
 sudo ovs-vsctl add-port lan ethx -- set interface ethx ofport_request=3
 sudo ifconfig ethx 0
 #controller
-sudo ovs-vsctl set-controller br0 tcp:10.0.10.10:6633 \-- set-fail-mode lan standalone
+sudo ovs-vsctl set-controller lan tcp:10.0.10.10:6633 \-- set-fail-mode lan standalone
 sudo ifconfig lan 10.0.0.10 netmask 255.255.255.0 up
