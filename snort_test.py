@@ -146,19 +146,23 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                 # if ICMP Protocol
                 if protocol == in_proto.IPPROTO_ICMP:
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
-                    myobj = {'ICMP',ipv4_src,ipv4_dst}
+                    myobj = {'ICMP',srcip,dstip}
             
                 #  if TCP Protocol
                 elif protocol == in_proto.IPPROTO_TCP:
                     t = pkt.get_protocol(tcp.tcp)
+                    src_port = t.src_port
+                    dst_port = t.dst_port
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port,)
-                    myobj = {'TCP',ipv4_src,ipv4_dst,tcp_src,tcp_dst}
+                    myobj = {'TCP',srcip,dstip,src_port,dst_port}
             
                 #  If UDP Protocol 
                 elif protocol == in_proto.IPPROTO_UDP:
                     u = pkt.get_protocol(udp.udp)
+                    src_port = u.src_port
+                    dst_port = u.dst_port
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port,)           
-                    myobj = {'UDP',ipv4_src,ipv4_dst,udp_src,udp_dst}
+                    myobj = {'UDP',srcip,dstip,src_port,dst_port}
 
             	# verify if we have a valid buffer_id, if yes avoid to send both
             	# flow_mod & packet_out
