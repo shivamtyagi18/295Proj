@@ -63,6 +63,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
         if eth:
             self.logger.info("%r", eth)
+        
+        
+        #match_final = parser.OFPMatch(eth_dst=dst, eth_src=src)
+        #actions_final = []
 
         # for p in pkt.protocols:
         #     if hasattr(p, 'protocol_name') is False:
