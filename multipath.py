@@ -134,11 +134,11 @@ class ProjectController(app_manager.RyuApp):
 
          match = parser.OFPMatch()
 
-            actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
+        actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
 
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS , actions)]
 
-            mod = datapath.ofproto_parser.OFPFlowMod(
+        mod = datapath.ofproto_parser.OFPFlowMod(
 
         datapath=datapath, match=match, cookie=0,
 
