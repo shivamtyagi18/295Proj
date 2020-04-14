@@ -130,7 +130,7 @@ class ProjectController(app_manager.RyuApp):
 
          ofproto = datapath.ofproto
 
-         parser = datapath.ofproto_parser()
+         parser = datapath.ofproto_parser
 
          match = parser.OFPMatch()
 
