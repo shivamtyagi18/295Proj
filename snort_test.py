@@ -84,7 +84,17 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         #    switch_name = sw.dp.socket.getpeername()
         #    if switch_name[0] == ev.addr:
         #        datapath = sw.dp.id
-        #        self.add_flow(datapath, 1, match1, actions1)
+        #        break
+        #pkt = msg.pkt
+        #pkt = packet.Packet(array.array('B', pkt))
+        #ip = pkt.get_protocol(ipv4.ipv4)
+        #srcip = ip.src
+        #dstip = ip.dst
+        #match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
+        #match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
+        #actions3 = []
+        #self.add_flow(datapath, 1, match3, actions3)
+        #self.add_flow(datapath, 1, match4, actions3)
 
 
         print('alertmsg: %s' % ''.join(msg.alertmsg))
