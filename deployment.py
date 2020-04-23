@@ -22,8 +22,8 @@ def runSSH(host_ip,commands):
     # add to known hosts
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        #client.connect(hostname=host_ip, username=username, pkey = k)
-        client.connect(hostname=host_ip, username="sdnnfv", password="1234")
+        client.connect(hostname=host_ip, username=username, pkey = k)
+        #client.connect(hostname=host_ip, username="sdnnfv", password="1234")
     except:
         print("[!] Cannot connect to the SSH Server")
         exit()
@@ -42,18 +42,18 @@ def runSSH(host_ip,commands):
 
 def runContainer(host_ip,switch_id,protocol):
     
-    apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.40")
-    dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.40")
+    apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
+    dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     
     try:
-        container = dockerClient.containers.run('gantapritham4/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
+        container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
         runPigRelay(container)
         bridge_name = str(container.name)[:str(container.name).find('_')]
         commands = []
         commands.append('ovs-vsctl add-br ' + bridge_name)
         commands.append('ifconfig ' + bridge_name + ' up')
-        commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + bridge_name)
-        commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + bridge_name)
+        commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
+        commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
         commands.append('ip link add veth0 type veth peer name veth1')
         commands.append('ifconfig veth1 up')
         commands.append('ifconfig veth0 up')
@@ -73,8 +73,11 @@ def runContainer(host_ip,switch_id,protocol):
         return False;
     
     except docker.errors.ImageNotFound:
-        downloadImage(dockerClient,'gantapritham4/sdnnfv','latest')
-        runContainer(switch_id,protocol)
+        if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
+            runContainer(host_ip,switch_id,protocol)
+        else:
+            print("Error Downloading Image")
+            return False
     
     except docker.errors.APIError:
         print("Connection to the docker Deamon not successful")
@@ -83,11 +86,11 @@ def runContainer(host_ip,switch_id,protocol):
 def startSnort(container):
     try:
         print("="*25, "Runing snort in ",container.id, "="*25)
-        result = container.exec_run('sh -c \'snort -A console -l /tmp -c /etc/snort/snort.conf -i eth0\'',stderr=True,stdout=True)
+        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',stderr=True,stdout=True)
         print("exit-code: " + str(result.exit_code))
 
-        #for line in result:
-         #       print(line)
+        for line in result:
+                print(line)
         return True
     except docker.errors.ContainerError:
         print("Error in container execution")
@@ -95,7 +98,8 @@ def startSnort(container):
     
 def downloadImage(client,imageName,tag):
     try:
-        image = client.get(imageName + ':' + tag)
+        print("="*25, "Downloading Docker Image ",imageName, "="*25)
+        image = client.images.pull(repository=imageName,tag=tag)
         if image.id is not None:
             return True
     except docker.errors.ImageNotFound:
@@ -106,7 +110,7 @@ def downloadImage(client,imageName,tag):
         return False
 
 def runPigRelay(container):
-    result = container.exec_run('sh -c "sed -i \'s/cont_ip/155.98.38.240/g\' pigrelay.py"')
+    result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.38.240/g\' pigrelay.py"')
     print(result)
     result2 = container.exec_run('sh -c \'python pigrelay.py\'')
     print(result2)
@@ -161,4 +165,4 @@ def stopSnort(container):
 #startSnort(container)
 #stopSnort(container)
 #changeRules("kiran",container)
-runContainer(host_ip,'1234','tcp')
+#runContainer(host_ip,'1234','tcp')
