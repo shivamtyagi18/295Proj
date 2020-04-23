@@ -38,6 +38,7 @@ import os
 import random
 import time
 
+import deployment as deploy
 
 class SimpleSwitchSnort(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -49,7 +50,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         self.snort_port = 3
         self.mac_to_port = {}
 
-        socket_config = {'unixsock': True}
+        socket_config = {'unixsock': False}
 
         self.snort.set_config(socket_config)
         self.snort.start_socket_server()
@@ -85,11 +86,12 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         #    if switch_name[0] == ev.addr:
         #        datapath = sw.dp.id
         #        break
-        #pkt = msg.pkt
-        #pkt = packet.Packet(array.array('B', pkt))
-        #ip = pkt.get_protocol(ipv4.ipv4)
-        #srcip = ip.src
-        #dstip = ip.dst
+        pkt = msg.pkt
+        pkt = packet.Packet(array.array('B', pkt))
+        ip = pkt.get_protocol(ipv4.ipv4)
+        srcip = ip.src
+        dstip = ip.dst
+        print(srcip, dstip)
         #match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
         #match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
         #actions3 = []
@@ -97,7 +99,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         #self.add_flow(datapath, 1, match4, actions3)
 
 
-        print('alertmsg: %s' % ''.join(msg.alertmsg))
+        #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
         self.packet_print(msg.pkt)
 
@@ -199,17 +201,24 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
             	# verify if we have a valid buffer_id, if yes avoid to send both
             	# flow_mod & packet_out
-            	if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                	self.add_flow(datapath, 1, match1, actions1, msg.buffer_id)
-                        self.add_flow(datapath, 1, match2, actions, msg.buffer_id)
-                	return
-            	else:
-                	self.add_flow(datapath, 1, match1, actions1)
-                        self.add_flow(datapath, 1, match2, actions)
-
-        url = 'http://'
-        x = requests.post(url, data = myobj)
-        print(x.text)
+                if msg.buffer_id != ofproto.OFP_NO_BUFFER :
+                    self.add_flow(datapath, 1, match1, actions1, msg.buffer_id)
+                    self.add_flow(datapath, 1, match2, actions, msg.buffer_id)
+                    return
+                else :
+                    self.add_flow(datapath, 1, match1, actions1)
+                    self.add_flow(datapath, 1, match2, actions)
+        
+        for sw in api.get_all_switch(self):
+            switch_name = sw.dp.socket.getpeername()
+            if sw.dp.id == datapath :
+                switch_addr = switch_name[0]
+            break
+        print(switch_addr)
+        #deploy.runContainer(str(switch_addr),"1234","TCP")
+        #url = 'http://'
+        #x = requests.post(url, data = myobj)
+        #print(x.text)
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
