@@ -39,6 +39,8 @@ import random
 import time
 
 import deployment as deploy
+Switch_dict = {} 
+
 
 class SimpleSwitchSnort(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -84,8 +86,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         for sw in api.get_all_switch(self):
             switch_name = sw.dp.socket.getpeername()
             if switch_name[0] == ev.addr:
-                datapath = sw.dp.id
+                switch_dpid = str(sw.dp.id)
             break
+        switch_datapath = Switch_dict[switch_dpid]['object']
         pkt = msg.pkt
         pkt = packet.Packet(array.array('B', pkt))
         ip = pkt.get_protocol(ipv4.ipv4)
@@ -95,8 +98,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
         match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
         actions3 = []
-        self.add_flow(datapath, 1, match3, actions3)
-        self.add_flow(datapath, 1, match4, actions3)
+        self.add_flow(switch_datapath, 1, match3, actions3)
+        self.add_flow(switch_datapath, 1, match4, actions3)
         print("Rules added")
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
@@ -105,10 +108,17 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
+        address = ev.msg.datapath.address
+        dpid = str(ev.msg.datapath.id)
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
+        Switch_dict[dpid] = {}
+        Switch_dict[dpid]['addr'] = address[0]
+        Switch_dict[dpid]['object'] = datapath
+        print("Pri: Datapath:"+ str(datapath))
+        print("Pri dpid:"+ str(dpid))
+        print("Pri address:" + str(address))
         # install table-miss flow entry
         #
         # We specify NO BUFFER to max_len of the output action due to
@@ -212,16 +222,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     self.add_flow(datapath, 1, match1, actions1)
                     self.add_flow(datapath, 1, match2, actions)
         
-            for sw in api.get_all_switch(self):
-                switch_name = sw.dp.socket.getpeername()
-                print(switch_name)
-                print(sw.dp.id)
-                print(datapath)
-                if sw.dp.id == datapath :
-                    switch_addr = switch_name[0]
-                break
-            print(switch_addr)
-            deploy.runContainer(str(switch_addr),"1234","TCP")
+            switch_addr = datapath.address
+            deploy.runContainer(str(switch_addr[0]),"1234","TCP")
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
