@@ -10,6 +10,7 @@ username = "priganta"
 password = "24091995Gp"
 controller_ip = "155.98.38.240"
 host_ip = "10.0.0.132"
+i=0
 
 #apiclient = docker.APIClient(base_url='tcp://10.0.0.132:2375',version="1.40")
 #dockerClient = docker.DockerClient(base_url='tcp://10.0.0.132:2375',version="1.40")
@@ -17,7 +18,7 @@ host_ip = "10.0.0.132"
 def runSSH(host_ip,commands):
     # initialize the SSH client
     client = paramiko.SSHClient()
-    k = paramiko.RSAKey.from_private_key_file("/Users/dharm/Downloads/id_rsa")
+    k = paramiko.RSAKey.from_private_key_file("/usr/local/295Proj/id_rsa")
     
     # add to known hosts
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -31,8 +32,8 @@ def runSSH(host_ip,commands):
     for command in commands:
         print("="*50, command, "="*50)
         stdin, stdout, stderr = client.exec_command('sudo '+ command , get_pty=True)
-        stdin.write('1234\n')
-        stdin.flush()
+        #stdin.write('1234\n')
+        #stdin.flush()
         print(stdout.read().decode())
         err = stderr.read().decode()
         if err:
@@ -44,45 +45,49 @@ def runContainer(host_ip,switch_id,protocol):
     
     apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.39")
-    
-    try:
-        container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
-        runPigRelay(container)
-        bridge_name = str(container.name)[:str(container.name).find('_')]
-        commands = []
-        commands.append('ovs-vsctl add-br ' + bridge_name)
-        commands.append('ifconfig ' + bridge_name + ' up')
-        commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
-        commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
-        commands.append('ip link add veth0 type veth peer name veth1')
-        commands.append('ifconfig veth1 up')
-        commands.append('ifconfig veth0 up')
-        commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
-        commands.append('ovs-vsctl add-port vswitch1 veth0')
-        commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
-        commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
+    global i
+    if i==0: 
+        try:
+            i = i+1
+            container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
+            runPigRelay(container)
+            bridge_name = str(container.name)[:str(container.name).find('_')]
+            commands = []
+            commands.append('ovs-vsctl add-br ' + bridge_name)
+            commands.append('ifconfig ' + bridge_name + ' up')
+            commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
+            commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
+            commands.append('ip link add veth0 type veth peer name veth1')
+            commands.append('ifconfig veth1 up')
+            commands.append('ifconfig veth0 up')
+            commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
+            commands.append('ovs-vsctl add-port ovs-lan veth0')
+            commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
+            commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
 
-        if runSSH(host_ip,commands):
-            startSnort(container)
+            if runSSH(host_ip,commands):
+                startSnort(container)
         
         
-        return True
+            return True
         
-    except docker.errors.ContainerError:
-        print("Error in container execution")
-        return False;
+        except docker.errors.ContainerError:
+            print("Error in container execution")
+            return False;
     
-    except docker.errors.ImageNotFound:
-        if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
-            runContainer(host_ip,switch_id,protocol)
-        else:
-            print("Error Downloading Image")
+        except docker.errors.ImageNotFound:
+            if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
+                runContainer(host_ip,switch_id,protocol)
+            else:
+                print("Error Downloading Image")
+                return False
+    
+        except docker.errors.APIError:
+            print("Connection to the docker Deamon not successful")
             return False
-    
-    except docker.errors.APIError:
-        print("Connection to the docker Deamon not successful")
-        return False
-    
+    else:
+        print("Ignoring Docker Run")
+
 def startSnort(container):
     try:
         print("="*25, "Runing snort in ",container.id, "="*25)

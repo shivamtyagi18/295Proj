@@ -81,27 +81,27 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         msg = ev.msg
         #print(ev)
         #print(ev.addr)
-        #for sw in api.get_all_switch(self):
-        #    switch_name = sw.dp.socket.getpeername()
-        #    if switch_name[0] == ev.addr:
-        #        datapath = sw.dp.id
-        #        break
+        for sw in api.get_all_switch(self):
+            switch_name = sw.dp.socket.getpeername()
+            if switch_name[0] == ev.addr:
+                datapath = sw.dp.id
+            break
         pkt = msg.pkt
         pkt = packet.Packet(array.array('B', pkt))
         ip = pkt.get_protocol(ipv4.ipv4)
         srcip = ip.src
         dstip = ip.dst
         print(srcip, dstip)
-        #match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
-        #match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
-        #actions3 = []
-        #self.add_flow(datapath, 1, match3, actions3)
-        #self.add_flow(datapath, 1, match4, actions3)
-
+        match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
+        match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
+        actions3 = []
+        self.add_flow(datapath, 1, match3, actions3)
+        self.add_flow(datapath, 1, match4, actions3)
+        print("Rules added")
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
-        self.packet_print(msg.pkt)
+        #self.packet_print(msg.pkt)
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -149,7 +149,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
 
-        # self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
+        self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
 
         # learn a mac address to avoid FLOOD next time.
         if (src != 'ff:ff:ff:ff:ff:ff'):
@@ -167,7 +167,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions1 = [parser.OFPActionOutput(out_port1)]
 
         # install a flow to avoid packet_in next time
-        if out_port != ofproto.OFPP_FLOOD:
+        if (out_port != ofproto.OFPP_FLOOD) and (dst != '33:33:00:00:00:02') :
             # check IP Protocol and create a match for IP
             if eth.ethertype == ether_types.ETH_TYPE_IP:
                 ip = pkt.get_protocol(ipv4.ipv4)
@@ -180,6 +180,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port,  ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
                     match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port,  ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
                     myobj = {'ICMP',srcip,dstip}
+                    print("ICMP")
             
                 #  if TCP Protocol
                 elif protocol == in_proto.IPPROTO_TCP:
@@ -189,6 +190,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port)
                     match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port)
                     myobj = {'TCP',srcip,dstip,src_port,dst_port}
+                    print("TCP")
             
                 #  If UDP Protocol 
                 elif protocol == in_proto.IPPROTO_UDP:
@@ -198,6 +200,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port)           
                     match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port)
                     myobj = {'UDP',srcip,dstip,src_port,dst_port}
+                    print("UDP")
 
             	# verify if we have a valid buffer_id, if yes avoid to send both
             	# flow_mod & packet_out
@@ -209,16 +212,16 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     self.add_flow(datapath, 1, match1, actions1)
                     self.add_flow(datapath, 1, match2, actions)
         
-        for sw in api.get_all_switch(self):
-            switch_name = sw.dp.socket.getpeername()
-            if sw.dp.id == datapath :
-                switch_addr = switch_name[0]
-            break
-        print(switch_addr)
-        #deploy.runContainer(str(switch_addr),"1234","TCP")
-        #url = 'http://'
-        #x = requests.post(url, data = myobj)
-        #print(x.text)
+            for sw in api.get_all_switch(self):
+                switch_name = sw.dp.socket.getpeername()
+                print(switch_name)
+                print(sw.dp.id)
+                print(datapath)
+                if sw.dp.id == datapath :
+                    switch_addr = switch_name[0]
+                break
+            print(switch_addr)
+            deploy.runContainer(str(switch_addr),"1234","TCP")
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
