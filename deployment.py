@@ -6,9 +6,9 @@ from io import BytesIO
 import paramiko
 
 hostname = "128.105.146.154"
-username = "priganta"
-password = "24091995Gp"
-controller_ip = "155.98.38.240"
+username = "dharma"
+password = ""
+controller_ip = "155.98.37.91"
 host_ip = "10.0.0.132"
 i=0
 
@@ -18,7 +18,7 @@ i=0
 def runSSH(host_ip,commands):
     # initialize the SSH client
     client = paramiko.SSHClient()
-    k = paramiko.RSAKey.from_private_key_file("/usr/local/295Proj/id_rsa")
+    k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
     
     # add to known hosts
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -61,7 +61,7 @@ def runContainer(host_ip,switch_id,protocol):
             commands.append('ifconfig veth1 up')
             commands.append('ifconfig veth0 up')
             commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
-            commands.append('ovs-vsctl add-port ovs-lan veth0')
+            commands.append('ovs-vsctl add-port ovs-lan veth0 -- set interface veth0 ofport_request=3')
             commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
             commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
 
@@ -115,7 +115,7 @@ def downloadImage(client,imageName,tag):
         return False
 
 def runPigRelay(container):
-    result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.38.240/g\' pigrelay.py"')
+    result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.37.91/g\' pigrelay.py"')
     print(result)
     result2 = container.exec_run('sh -c \'python pigrelay.py\'')
     print(result2)
