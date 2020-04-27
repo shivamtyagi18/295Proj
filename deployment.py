@@ -5,52 +5,25 @@ import time
 from io import BytesIO
 import paramiko
 import logging
-import threading
+import flask
+from flask import request, jsonify
+
+app = flask.Flask(__name__)
+app.config["DEBUG"] = True
+
 
 logging.basicConfig(filename='deployment.log', filemode='w', level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-hostname = "128.105.146.154"
 username = "dharma"
-password = ""
 controller_ip = "155.98.37.91"
-host_ip = "10.0.0.132"
 i=0
-
-#apiclient = docker.APIClient(base_url='tcp://10.0.0.132:2375',version="1.40")
-#dockerClient = docker.DockerClient(base_url='tcp://10.0.0.132:2375',version="1.40")
-
-def runSSH(host_ip,commands):
-    # initialize the SSH client
-    client = paramiko.SSHClient()
-    logging.info("Getting Private token")
-    k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
     
-    # add to known hosts
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    try:
-        logging.info("Initiating Conection")
-        client.connect(hostname=host_ip, username=username, pkey = k)
-        logging.info("Connection Successfull")
-        #client.connect(hostname=host_ip, username="sdnnfv", password="1234")
-    except:
-        logging.info("[!] Cannot connect to the SSH Server")
-        exit()
-    # execute the commands
-    for command in commands:
-        logging.info(command)
-        stdin, stdout, stderr = client.exec_command('sudo '+ command , get_pty=True)
-        #stdin.write('1234\n')
-        #stdin.flush()
-        logging.info('Output is :%s',stdout.read().decode())
-        err = stderr.read().decode()
-        if err:
-            logging.warning(err)
-            return False
-    return True
-
-def runContainer(host_ip,switch_id,protocol):
+@app.route('/api/create', methods=['GET'])
+def runContainer():
+    host_ip = request.args['host_ip']
+    switch_id = request.args['switch_id']
+    protocol = request.args['protocol']
     
-def runContainer_thread(host_ip,switch_id,protocol):
-    logging.info("Starting Deployment in switch : %s" , str(host_ip),)
+    logging.info("Starting Deployment in switch : %s" , str(host_ip))
     apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     global i
@@ -77,28 +50,59 @@ def runContainer_thread(host_ip,switch_id,protocol):
             commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
             logging.info("Starting ssh commands")
             if runSSH(host_ip,commands):
-                startSnort(container)
-        
-        
-            return True
+                if startSnort(container):
+                    return "True",200
+                
+            return "False",400
         
         except docker.errors.ContainerError:
             logging.warning("Error in container execution")
-            return False;
+            return "False",400;
     
         except docker.errors.ImageNotFound:
             if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
                 runContainer(host_ip,switch_id,protocol)
             else:
                 logging.warning("Error Downloading Image")
-                return False
+                return "False",400
     
         except docker.errors.APIError:
             logging.warning("Connection to the docker Deamon not successful")
-            return False
+            return "False",400
     else:
         logging.warning("Ignoring Docker Run")
+        return "Ignore",200
 
+    
+def runSSH(host_ip,commands):
+    # initialize the SSH client
+    client = paramiko.SSHClient()
+    logging.info("Getting Private token")
+    try:
+         k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
+        # add to known hosts
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # Initiate Connection
+        logging.info("Initiating Conection")
+        client.connect(hostname=host_ip, username=username, pkey = k)
+        logging.info("Connection Successfull")
+        #client.connect(hostname=host_ip, username="sdnnfv", password="1234")
+    except:
+        logging.info("[!] Cannot connect to the SSH Server")
+        return False
+    # execute the commands
+    for command in commands:
+        logging.info(command)
+        stdin, stdout, stderr = client.exec_command('sudo '+ command , get_pty=True)
+        #stdin.write('1234\n')
+        #stdin.flush()
+        logging.info('Output is :%s',stdout.read().decode())
+        err = stderr.read().decode()
+        if err:
+            logging.warning(err)
+            return False
+    return True
+    
 def startSnort(container):
     try:
         logging.info("Runing snort in : %s",container.id)
@@ -182,3 +186,11 @@ def stopSnort(container):
 #stopSnort(container)
 #changeRules("kiran",container)
 #runContainer(host_ip,'1234','tcp')
+
+
+
+
+
+print("App starting with Controller IP: " + controller_ip)
+
+app.run()
