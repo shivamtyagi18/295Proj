@@ -12,7 +12,7 @@ app = flask.Flask(__name__)
 app.config["DEBUG"] = True
 
 
-logging.basicConfig(filename='deployment.log', filemode='w', level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+#logging.basicConfig(filename='deployment.log', filemode='w', level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 username = "dharma"
 controller_ip = "155.98.37.91"
 i=0
