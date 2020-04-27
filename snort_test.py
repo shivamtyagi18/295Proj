@@ -81,6 +81,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
     @set_ev_cls(snortlib.EventAlert, MAIN_DISPATCHER)
     def _dump_alert(self, ev):
+        print("Alert received from container:" + str(ev.addr))
         msg = ev.msg
         #print(ev)
         #print(ev.addr)
@@ -101,7 +102,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions3 = []
         self.add_flow(switch_datapath, 1, match3, actions3)
         self.add_flow(switch_datapath, 1, match4, actions3)
-        print("Rules added")
+        print("Rules added for container alert" + str(ev.addr))
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
