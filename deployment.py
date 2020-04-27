@@ -23,7 +23,7 @@ def runContainer():
     switch_id = request.args['switch_id']
     protocol = request.args['protocol']
     
-    logging.info("Starting Deployment in switch : %s" , str(host_ip))
+    print("Starting Deployment in switch : %s" , str(host_ip))
     apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.39")
     global i
@@ -31,11 +31,11 @@ def runContainer():
         try:
             i = i+1
             container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
-            logging.info("Container Deployed with id: %s" + container.id)
+            print("Container Deployed with id: %s" + container.id)
             runPigRelay(container)
             bridge_name = str(container.name)[:str(container.name).find('_')]
-            logging.info('bridge Name : %s', bridge_name)
-            logging.info("Adding Commands")
+            print('bridge Name : %s', bridge_name)
+            print("Adding Commands")
             commands = []
             commands.append('ovs-vsctl add-br ' + bridge_name)
             commands.append('ifconfig ' + bridge_name + ' up')
@@ -48,7 +48,7 @@ def runContainer():
             commands.append('ovs-vsctl add-port ovs-lan veth0 -- set interface veth0 ofport_request=3')
             commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
             commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
-            logging.info("Starting ssh commands")
+            print("Starting ssh commands")
             if runSSH(host_ip,commands):
                 if startSnort(container):
                     return "True",200
@@ -56,64 +56,64 @@ def runContainer():
             return "False",400
         
         except docker.errors.ContainerError:
-            logging.warning("Error in container execution")
+            print("Error in container execution")
             return "False",400;
     
         except docker.errors.ImageNotFound:
             if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
                 runContainer(host_ip,switch_id,protocol)
             else:
-                logging.warning("Error Downloading Image")
+                print("Error Downloading Image")
                 return "False",400
     
         except docker.errors.APIError:
-            logging.warning("Connection to the docker Deamon not successful")
+            print("Connection to the docker Deamon not successful")
             return "False",400
     else:
-        logging.warning("Ignoring Docker Run")
+        print("Ignoring Docker Run")
         return "Ignore",200
 
     
 def runSSH(host_ip,commands):
     # initialize the SSH client
     client = paramiko.SSHClient()
-    logging.info("Getting Private token")
+    print("Getting Private token")
     try:
         k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
         # add to known hosts
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         # Initiate Connection
-        logging.info("Initiating Conection")
+        print("Initiating Conection")
         client.connect(hostname=host_ip, username=username, pkey = k)
-        logging.info("Connection Successfull")
+        print("Connection Successfull")
         #client.connect(hostname=host_ip, username="sdnnfv", password="1234")
     except:
-        logging.info("[!] Cannot connect to the SSH Server")
+        print("[!] Cannot connect to the SSH Server")
         return False
     # execute the commands
     for command in commands:
-        logging.info(command)
+        print(command)
         stdin, stdout, stderr = client.exec_command('sudo '+ command , get_pty=True)
         #stdin.write('1234\n')
         #stdin.flush()
-        logging.info('Output is :%s',stdout.read().decode())
+        print('Output is :%s',stdout.read().decode())
         err = stderr.read().decode()
         if err:
-            logging.warning(err)
+            print(err)
             return False
     return True
     
 def startSnort(container):
     try:
-        logging.info("Runing snort in : %s",container.id)
+        print("Runing snort in : %s",container.id)
         result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',stderr=True,stdout=True)
-        logging.info("Finished Running snort with exit-code: %s" + str(result.exit_code))
+        print("Finished Running snort with exit-code: %s" + str(result.exit_code))
 
         for line in result:
-                logging.info('%s',line)
+                print('%s',line)
         return True
     except docker.errors.ContainerError:
-        logging.warning("Error in container execution")
+        print("Error in container execution")
         return False;
     
 def downloadImage(client,imageName,tag):
@@ -131,9 +131,9 @@ def downloadImage(client,imageName,tag):
 
 def runPigRelay(container):
     result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.37.91/g\' pigrelay.py"')
-    logging.info("Changed pigrelay file with error code:" + str(result.exit_code))
+    print("Changed pigrelay file with error code:" + str(result.exit_code))
     result2 = container.exec_run('sh -c \'python pigrelay.py\'')
-    logging.info("Started Pigrelay with exit code:" + str(result.exit_code))
+    print("Started Pigrelay with exit code:" + str(result.exit_code))
     return
     
 def changeRules(filename,container):
