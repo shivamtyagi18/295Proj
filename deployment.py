@@ -33,52 +33,47 @@ def runContainer():
     apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.40")
     dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.40")
     global i
-    if i==0: 
-        try:
-            i = i+1
-            container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
-            print("Container Deployed with id: %s" + container.id)
-            runPigRelay(container)
-            bridge_name = str(container.name)[:str(container.name).find('_')]
-            print('bridge Name : %s', bridge_name)
-            print("Adding Commands")
-            commands = []
-            commands.append('ovs-vsctl add-br ' + bridge_name)
-            commands.append('ifconfig ' + bridge_name + ' up')
-            commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
-            commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
-            commands.append('ip link add veth0 type veth peer name veth1')
-            commands.append('ifconfig veth1 up')
-            commands.append('ifconfig veth0 up')
-            commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
-            commands.append('ovs-vsctl add-port ovs-lan veth0 -- set interface veth0 ofport_request=3')
-            commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
-            commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
-            print("Starting ssh commands")
-            if runSSH(host_ip,commands):
-                if startSnort(container):
-                    return "True",200
-                
-            return "False",400
-        
-        except docker.errors.ContainerError:
-            print("Error in container execution")
-            return "False",400;
-    
-        except docker.errors.ImageNotFound:
-            if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
-                runContainer(host_ip,switch_id,protocol)
-            else:
-                print("Error Downloading Image")
-                return "False",400
-    
-        except docker.errors.APIError:
-            print("Connection to the docker Deamon not successful")
-            return "False",400
-    else:
-        print("Ignoring Docker Run")
-        return "Ignore",200
+    try:
+        i = i+1
+        container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
+        print("Container Deployed with id: %s" + container.id)
+        runPigRelay(container)
+        bridge_name = str(container.name)[:str(container.name).find('_')]
+        print('bridge Name : %s', bridge_name)
+        print("Adding Commands")
+        commands = []
+        commands.append('ovs-vsctl add-br ' + bridge_name)
+        commands.append('ifconfig ' + bridge_name + ' up')
+        commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
+        commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
+        commands.append('ip link add veth0 type veth peer name veth1')
+        commands.append('ifconfig veth1 up')
+        commands.append('ifconfig veth0 up')
+        commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
+        commands.append('ovs-vsctl add-port ovs-lan veth0 -- set interface veth0 ofport_request=3')
+        commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
+        commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
+        print("Starting ssh commands")
+        if runSSH(host_ip,commands):
+            if startSnort(container):
+                return "True",200
 
+        return "False",400
+
+    except docker.errors.ContainerError:
+        print("Error in container execution")
+        return "False",400;
+
+    except docker.errors.ImageNotFound:
+        if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
+            runContainer(host_ip,switch_id,protocol)
+        else:
+            print("Error Downloading Image")
+            return "False",400
+
+    except docker.errors.APIError:
+        print("Connection to the docker Deamon not successful")
+        return "False",400
     
 def runSSH(host_ip,commands):
     # initialize the SSH client
