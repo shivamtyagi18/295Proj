@@ -79,7 +79,7 @@ def runSSH(host_ip,commands):
     client = paramiko.SSHClient()
     logging.info("Getting Private token")
     try:
-         k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
+        k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
         # add to known hosts
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         # Initiate Connection
@@ -134,6 +134,7 @@ def runPigRelay(container):
     logging.info("Changed pigrelay file with error code:" + str(result.exit_code))
     result2 = container.exec_run('sh -c \'python pigrelay.py\'')
     logging.info("Started Pigrelay with exit code:" + str(result.exit_code))
+    return
     
 def changeRules(filename,container):
     print("Changing Rules for container:" + container.id)

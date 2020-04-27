@@ -33,12 +33,13 @@ from ryu.lib import snortlib
 
 from ryu.topology import api
 from ryu.topology import event
+import requests
 
 import os
 import random
 import time
 
-import deployment as deploy
+
 Switch_dict = {} 
 
 
@@ -223,10 +224,12 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     self.add_flow(datapath, 1, match1, actions1)
                     self.add_flow(datapath, 1, match2, actions)
         
-                switch_addr = datapath.address
-                print("calling container switch" + str(switch_addr[0]))
-                deploy.runContainer(str(switch_addr[0]),"1234","TCP")
-
+                    switch_addr = datapath.address
+                    print("calling container switch" + str(switch_addr[0]))
+                    url = "http://127.0.0.1:5000/api/create"
+                    params = {'host_ip':switch_addr[0], 'switch_id':"1234", 'protocol':"ICMP"}
+                    r = requests.get(url=url,params=params)
+                    print(r)
             else:
                 if eth.ethertype == ether_types.ETH_TYPE_ARP :
                     print("ARP Packet")
