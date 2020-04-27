@@ -16,6 +16,12 @@ app.config["DEBUG"] = True
 username = "dharma"
 controller_ip = "155.98.37.91"
 i=0
+
+
+@app.route('/', methods=['GET'])
+def home():
+    print("args are:" + str(request.args))
+    return '<h1>Distant Reading Archive</h1><p>A prototype API for distant reading of science fiction novels.</p>'
     
 @app.route('/api/create', methods=['GET'])
 def runContainer():
@@ -24,8 +30,8 @@ def runContainer():
     protocol = request.args['protocol']
     
     print("Starting Deployment in switch : %s" , str(host_ip))
-    apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
-    dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.39")
+    apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.40")
+    dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.40")
     global i
     if i==0: 
         try:
@@ -132,8 +138,8 @@ def downloadImage(client,imageName,tag):
 def runPigRelay(container):
     result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.37.91/g\' pigrelay.py"')
     print("Changed pigrelay file with error code:" + str(result.exit_code))
-    result2 = container.exec_run('sh -c \'python pigrelay.py\'')
-    print("Started Pigrelay with exit code:" + str(result.exit_code))
+    result2 = container.exec_run('sh -c \'python pigrelay.py\'',detach=True,tty=True)
+    print("Started Pigrelay with exit code:" + str(result2.exit_code))
     return
     
 def changeRules(filename,container):

@@ -177,7 +177,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions1 = [parser.OFPActionOutput(out_port1)]
 
         # install a flow to avoid packet_in next time
-        if (out_port != ofproto.OFPP_FLOOD) and (dst != '33:33:00:00:00:02') :
+        if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33') :
             # check IP Protocol and create a match for IP
             if eth.ethertype == ether_types.ETH_TYPE_IP:
                 ip = pkt.get_protocol(ipv4.ipv4)
