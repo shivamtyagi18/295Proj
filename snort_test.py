@@ -50,7 +50,6 @@ class SimpleSwitchSnort(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleSwitchSnort, self).__init__(*args, **kwargs)
         self.snort = kwargs['snortlib']
-        self.snort_port = 3
         self.mac_to_port = {}
 
         socket_config = {'unixsock': False}
@@ -148,6 +147,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         msg = ev.msg
         datapath = msg.datapath
         ofproto = datapath.ofproto
+        ports = len(datapath.ports) - 1 
+        print(ports)
+        self.snort_port = ports + 1 
+        print(self.snort_port)
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
 
@@ -166,6 +169,14 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         if (src != 'ff:ff:ff:ff:ff:ff'):
             if src not in self.mac_to_port[dpid]:
                 self.mac_to_port[dpid][src] = in_port
+
+        if dst in self.mac_to_port[dpid]:
+                out_port = self.mac_to_port[dpid][dst]
+        else:
+                out_port = ofproto.OFPP_FLOOD
+        
+        actions = [parser.OFPActionOutput(out_port)]
+
 
         # install a flow to avoid packet_in next time
         if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33'):
