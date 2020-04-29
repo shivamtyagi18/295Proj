@@ -167,78 +167,115 @@ class SimpleSwitchSnort(app_manager.RyuApp):
             if src not in self.mac_to_port[dpid]:
                 self.mac_to_port[dpid][src] = in_port
 
-        if dst in self.mac_to_port[dpid]:
-            out_port = self.mac_to_port[dpid][dst]
-            out_port1 = self.snort_port
-        else:
-            out_port = ofproto.OFPP_FLOOD
-            out_port1 = self.snort_port
-
-        actions = [parser.OFPActionOutput(out_port)]
-        actions1 = [parser.OFPActionOutput(out_port1)]
-
         # install a flow to avoid packet_in next time
-        if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33') :
-            # check IP Protocol and create a match for IP
+        if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33'):
             if eth.ethertype == ether_types.ETH_TYPE_IP:
                 ip = pkt.get_protocol(ipv4.ipv4)
                 srcip = ip.src
                 dstip = ip.dst
                 protocol = ip.proto
-                
-                
-                
+
                 # if ICMP Protocol
                 if protocol == in_proto.IPPROTO_ICMP:
-                    match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port,  ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
-                    match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port,  ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
-                
-                    print("ICMP")
-            
+                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
+                    params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol' : protocol, 'src_port' : "0", 'dst_port' : "0"}
                 #  if TCP Protocol
                 elif protocol == in_proto.IPPROTO_TCP:
                     t = pkt.get_protocol(tcp.tcp)
-                    src_port = t.src_port
-                    dst_port = t.dst_port
-                    match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port)
-                    match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port)
-                    print("TCP")
-            
-                #  If UDP Protocol 
+                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port, )
+                    params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol': protocol, 'src_port': tcp_src, 'dst_port': tcp_dst}
+                    #  If UDP Protocol
                 elif protocol == in_proto.IPPROTO_UDP:
                     u = pkt.get_protocol(udp.udp)
-                    src_port = u.src_port
-                    dst_port = u.dst_port
-                    match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port)           
-                    match2 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port = self.snort_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port)
-                    print("UDP")
+                    match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port, )
+                    params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol': protocol, 'src_port': udp_src, 'dst_port': udp_dst}
 
-            	# verify if we have a valid buffer_id, if yes avoid to send both
-            	# flow_mod & packet_out
-                if msg.buffer_id != ofproto.OFP_NO_BUFFER :
-                    print("Adding flows with Buffer ID")
-                    self.add_flow(datapath, 1, match1, actions1, msg.buffer_id)
-                    self.add_flow(datapath, 1, match2, actions, msg.buffer_id)
-                    return
-                else :
-                    print("Adding flows without buffer ID")
-                    self.add_flow(datapath, 1, match1, actions1)
-                    self.add_flow(datapath, 1, match2, actions)
-        
-                    switch_addr = datapath.address
-                    print("calling container switch" + str(switch_addr[0]))
-                    url = "http://127.0.0.1:5000/api/create"
-                    params = {'host_ip':switch_addr[0], 'switch_id':"1234", 'protocol':"ICMP"}
-                    r = requests.get(url=url,params=params)
-                    print(r)
+                switch_addr = datapath.address
+                print("calling container switch" + str(switch_addr[-1]))
+                url = "http://127.0.0.1:5000/api/create"
+                r = requests.get(url=url, params=params)
+                print(r)
+
+            # verify if we have a valid buffer_id, if yes avoid to send both
+            if eth.ethertype == ether_types.ETH_TYPE_ARP:
+                match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP, in_port=in_port, eth_dst=dst, eth_src=src)
+                r = 0
+
+
+            if dst in self.mac_to_port[dpid]:
+                out_port = self.mac_to_port[dpid][dst]
             else:
-                if eth.ethertype == ether_types.ETH_TYPE_ARP :
-                    print("ARP Packet")
-                    arp_pkt = pkt.get_protocol(arp.arp)
-                    if arp_pkt.opcode == arp.ARP_REQUEST :
-                        print("ARP request")
-                    else : 
-                        print("ARP Reply")
+                out_port = ofproto.OFPP_FLOOD
+
+            actions = [parser.OFPActionOutput(out_port)]
+            # flow_mod & packet_out
+            if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+                self.add_flow(datapath, 1, match, actions, msg.buffer_id)
+                return
+            else:
+                self.add_flow(datapath, 1, match, actions)
+
+            if ( r == ) :
+                # check IP Protocol and create a match for IP
+                if eth.ethertype == ether_types.ETH_TYPE_IP:
+                    ip = pkt.get_protocol(ipv4.ipv4)
+                    srcip = ip.src
+                    dstip = ip.dst
+                    protocol = ip.proto
+
+                    # if ICMP Protocol
+                    if protocol == in_proto.IPPROTO_ICMP:
+                        match0 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip,
+                                                 ipv4_dst=dstip, ip_proto=protocol)
+                        match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=self.snort_port,
+                                                 ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
+                        print("ICMP")
+
+                    #  if TCP Protocol
+                    elif protocol == in_proto.IPPROTO_TCP:
+                        t = pkt.get_protocol(tcp.tcp)
+                        src_port = t.src_port
+                        dst_port = t.dst_port
+                        match0 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip,
+                                                 ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port,
+                                                 tcp_dst=t.dst_port)
+                        match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=self.snort_port,
+                                                 ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port,
+                                                 tcp_dst=t.dst_port)
+                        print("TCP")
+
+                    #  If UDP Protocol
+                    elif protocol == in_proto.IPPROTO_UDP:
+                        u = pkt.get_protocol(udp.udp)
+                        src_port = u.src_port
+                        dst_port = u.dst_port
+                        match0 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip,
+                                                 ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port,
+                                                 udp_dst=u.dst_port)
+                        match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=self.snort_port,
+                                                 ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port,
+                                                 udp_dst=u.dst_port)
+                        print("UDP")
+
+                    if dst in self.mac_to_port[dpid]:
+                        out_port = self.mac_to_port[dpid][dst]
+                        out_port1 = self.snort_port
+
+
+                    actions = [parser.OFPActionOutput(out_port)]
+                    actions1 = [parser.OFPActionOutput(out_port1)]
+
+                    # verify if we have a valid buffer_id, if yes avoid to send both
+                    # flow_mod & packet_out
+                    if msg.buffer_id != ofproto.OFP_NO_BUFFER:
+                        print("Adding flows with Buffer ID")
+                        self.add_flow(datapath, 0, match1, actions1, msg.buffer_id)
+                        self.add_flow(datapath, 0, match2, actions, msg.buffer_id)
+                        return
+                    else:
+                        print("Adding flows without buffer ID")
+                        self.add_flow(datapath, 0, match1, actions1)
+                        self.add_flow(datapath, 0, match2, actions)
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -246,4 +283,4 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id, in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-        print("Exiting packet in handler for datapath"+ str(datapath))
+
