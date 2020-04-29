@@ -191,7 +191,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol': protocol, 'src_port': udp_src, 'dst_port': udp_dst}
 
                 switch_addr = datapath.address
-                print("calling container switch" + str(switch_addr[-1]))
+                print("calling container switch" + str(switch_addr[0]))
                 url = "http://127.0.0.1:5000/api/create"
                 r = requests.get(url=url, params=params)
                 print(r)
@@ -215,7 +215,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
             else:
                 self.add_flow(datapath, 1, match, actions)
 
-            if ( r == ) :
+            if ( r.status_code == 201 ) :
                 # check IP Protocol and create a match for IP
                 if eth.ethertype == ether_types.ETH_TYPE_IP:
                     ip = pkt.get_protocol(ipv4.ipv4)
