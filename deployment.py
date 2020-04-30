@@ -16,6 +16,7 @@ app.config["DEBUG"] = True
 username = "dharma"
 controller_ip = "155.98.37.91"
 i=0
+deployed_list = []
 
 
 @app.route('/', methods=['GET'])
@@ -26,17 +27,22 @@ def home():
 @app.route('/api/create', methods=['GET'])
 def runContainer():
     host_ip = request.args['host_ip']
-    switch_id = request.args['switch_id']
+    src_ip = request.args['src_ip']
+    dst_ip = request.args['dst_ip']
+    src_port = request.args['src_port']
+    dst_port = request.args['dst_port']
     protocol = request.args['protocol']
+    
+    if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
+        return "Already Runnning Container",200
     
     print("Starting Deployment in switch : %s" , str(host_ip))
     global i
     try:
         i = i+1
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
-        client = docker.DockerClient(base_url='128.105.146.154', tls=tls_config)
-        apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
-        dockerClient = docker.DockerClient(base_url='tcp://128.105.146.154:2376',version="1.39",tls=tls_config)
+        apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
+        dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
         print("Container Deployed with id: %s" + container.id)
         runPigRelay(container)
@@ -58,7 +64,7 @@ def runContainer():
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
             if startSnort(container):
-                return "True",200
+                return "True",201
 
         return "False",400
 
@@ -105,7 +111,16 @@ def runSSH(host_ip,commands):
             print(err)
             return False
     return True
-    
+ 
+def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
+    test1 = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
+    test2 = {"src_ip": dst_ip, "dst_ip":src_ip, "src_port": dst_port, "dst_port": src_port, "protocol": protocol}
+    for i in range(len(deployed_list)): 
+        if test1==deployed_list[i] or test2==deployed_list[i]:
+            print("Deployment already exist in the switch")
+            return True
+    return False  
+
 def startSnort(container):
     try:
         print("Runing snort in : %s",container.id)
