@@ -140,7 +140,21 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                 match=match, instructions=inst)
         datapath.send_msg(mod)
-        print("Flow rules added in datapath"+ str(datapath))
+        print("Flow rules added in datapath"+ str(datapath.address[0]))
+
+    
+    def del_flow(self, datapath, match):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+
+        mod = parser.OFPFlowMod(datapath=datapath,
+                                command=ofproto.OFPFC_DELETE,
+                                out_port=ofproto.OFPP_ANY,
+                                out_group=ofproto.OFPG_ANY,
+                                match=match)
+        datapath.send_msg(mod)
+        print("Flow rules deleted for modification in " + str(dataapth.address[0]))
+
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -148,9 +162,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         datapath = msg.datapath
         ofproto = datapath.ofproto
         ports = len(datapath.ports) - 1 
-        print(ports)
         self.snort_port = ports + 1 
-        print(self.snort_port)
         parser = datapath.ofproto_parser
         in_port = msg.match['in_port']
 
@@ -236,6 +248,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
                     # if ICMP Protocol
                     if protocol == in_proto.IPPROTO_ICMP:
+                        self.del_flow(dataapth,match)
                         match0 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip,
                                                  ipv4_dst=dstip, ip_proto=protocol)
                         match1 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=self.snort_port,
@@ -244,6 +257,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
                     #  if TCP Protocol
                     elif protocol == in_proto.IPPROTO_TCP:
+                        self.del_flow(datapath,match)
                         t = pkt.get_protocol(tcp.tcp)
                         src_port = t.src_port
                         dst_port = t.dst_port
@@ -257,6 +271,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
                     #  If UDP Protocol
                     elif protocol == in_proto.IPPROTO_UDP:
+                        self.del_flow(datapath,match)
                         u = pkt.get_protocol(udp.udp)
                         src_port = u.src_port
                         dst_port = u.dst_port
