@@ -30,11 +30,13 @@ def runContainer():
     protocol = request.args['protocol']
     
     print("Starting Deployment in switch : %s" , str(host_ip))
-    apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.40")
-    dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2375',version="1.40")
     global i
     try:
         i = i+1
+        tls_config = docker.tls.TLSConfig(client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
+        client = docker.DockerClient(base_url='128.105.146.154', tls=tls_config)
+        apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
+        dockerClient = docker.DockerClient(base_url='tcp://128.105.146.154:2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
         print("Container Deployed with id: %s" + container.id)
         runPigRelay(container)
