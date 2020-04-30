@@ -33,7 +33,7 @@ def runContainer():
     global i
     try:
         i = i+1
-        tls_config = docker.tls.TLSConfig(client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
+        tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         client = docker.DockerClient(base_url='128.105.146.154', tls=tls_config)
         apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2375',version="1.39")
         dockerClient = docker.DockerClient(base_url='tcp://128.105.146.154:2376',version="1.39",tls=tls_config)
