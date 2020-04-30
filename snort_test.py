@@ -189,7 +189,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         
         actions = [parser.OFPActionOutput(out_port)]
 
-
+        switch_addr = datapath.address
         # install a flow to avoid packet_in next time
         if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33'):
             if eth.ethertype == ether_types.ETH_TYPE_IP:
@@ -213,7 +213,6 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port, )
                     params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol': protocol, 'src_port': udp_src, 'dst_port': udp_dst}
 
-                switch_addr = datapath.address
                 print("calling container switch" + str(switch_addr[0]))
                 url = "http://127.0.0.1:5000/api/create"
                 r = requests.get(url=url, params=params)
