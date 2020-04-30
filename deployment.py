@@ -36,6 +36,9 @@ def runContainer():
     if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
         return "Already Runnning Container",200
     
+    deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
+    deployed_list.append(deployment)
+    
     print("Starting Deployment in switch : %s" , str(host_ip))
     global i
     try:
@@ -64,7 +67,9 @@ def runContainer():
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
             if startSnort(container):
-                return "True",201
+                print("Deployed Container for:" + deployment)
+                print("Total Deployments:" + deployed_list)
+                return deployment,201
 
         return "False",400
 
