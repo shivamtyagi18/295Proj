@@ -96,12 +96,13 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         ip = pkt.get_protocol(ipv4.ipv4)
         srcip = ip.src
         dstip = ip.dst
+        protocol = ip.proto
         print(srcip, dstip)
         match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
         match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
         actions3 = []
-        self.add_flow(switch_datapath, 1, match3, actions3)
-        self.add_flow(switch_datapath, 1, match4, actions3)
+        self.add_flow(switch_datapath, 5, match3, actions3)
+        self.add_flow(switch_datapath, 5, match4, actions3)
         print("Rules added for container alert" + str(ev.addr))
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
