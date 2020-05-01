@@ -54,21 +54,23 @@ def runContainer():
         print("Adding Commands")
         commands = []
         commands.append('ovs-vsctl add-br ' + bridge_name)
-        commands.append('ifconfig ' + bridge_name + ' up')
+        #commands.append('ifconfig ' + bridge_name + ' up')
+        commands.append('ovs-ofctl add-flow ' + bridge_name + ' dl_type=0x86dd,actions=drop')
+        commands.append('ovs-ofctl add-flow ' + bridge_name + ' dl_type=0x0806,actions=drop')
         commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
         commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
         commands.append('ip link add veth0 type veth peer name veth1')
         commands.append('ifconfig veth1 up')
         commands.append('ifconfig veth0 up')
         commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
-        commands.append('ovs-vsctl add-port ovs-lan veth0 -- set interface veth0 ofport_request=3')
+        commands.append('ovs-vsctl add-port ovs-lan veth0')
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
             if startSnort(container):
-                print("Deployed Container for:" + deployment)
-                print("Total Deployments:" + deployed_list)
+                print("Deployed Container for:" + str(deployment))
+                print("Total Deployments:" + str(deployed_list))
                 return deployment,201
 
         return "False",400
@@ -129,11 +131,11 @@ def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
 def startSnort(container):
     try:
         print("Runing snort in : %s",container.id)
-        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',stderr=True,stdout=True)
+        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
         print("Finished Running snort with exit-code: %s" + str(result.exit_code))
 
-        for line in result:
-                print('%s',line)
+        #for line in result:
+        #       print('%s',line)
         return True
     except docker.errors.ContainerError:
         print("Error in container execution")
