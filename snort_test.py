@@ -84,12 +84,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         msg = ev.msg
         print(ev)
         print(ev.addr)
-        for sw in api.get_all_switch(self):
-            switch_name = sw.dp.socket.getpeername()
-            if switch_name[0] == ev.addr:
-                switch_dpid = str(sw.dp.id)
-            break
-        switch_datapath = Switch_dict[switch_dpid]['object']
+        switch_datapath = Switch_dict.get(ev.addr)       
         parser = switch_datapath.ofproto_parser
         pkt = msg.pkt
         pkt = packet.Packet(array.array('B', pkt))
@@ -116,9 +111,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-        Switch_dict[dpid] = {}
-        Switch_dict[dpid]['addr'] = address[0]
-        Switch_dict[dpid]['object'] = datapath
+        Switch_dict[address[0]] = {}
+        Switch_dict[address[0]] = datapath
 
         # install table-miss flow entry
         #
