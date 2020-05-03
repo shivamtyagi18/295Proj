@@ -84,8 +84,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         msg = ev.msg
         print(ev)
         print(ev.addr)
-        switch_datapath = Switch_dict.get(ev.addr)       
+        switch_datapath = Switch_dict.get(ev.addr)
+        print(switch_datapath)
         parser = switch_datapath.ofproto_parser
+        ofproto = switch_datapath.ofproto
         pkt = msg.pkt
         pkt = packet.Packet(array.array('B', pkt))
         ip = pkt.get_protocol(ipv4.ipv4)
@@ -93,12 +95,12 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         dstip = ip.dst
         protocol = ip.proto
         print(srcip, dstip)
-        match3 = parser.OFPMatch(ipv4_src=srcip, ipv4_dst=dstip)
-        match4 = parser.OFPMatch(ipv4_src=dstip, ipv4_dst=srcip)
+        match3 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=srcip, ipv4_dst=dstip)
+        match4 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=dstip, ipv4_dst=srcip)
         actions3 = []
-        self.add_flow(switch_datapath, 5, match3, actions3)
-        self.add_flow(switch_datapath, 5, match4, actions3)
-        print("Rules added for container alert" + str(ev.addr))
+        self.add_flow(switch_datapath, 1, match3, actions3)
+        self.add_flow(switch_datapath, 1, match4, actions3)
+        print("Rules deleted for container alert" + str(ev.addr))
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
