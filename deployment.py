@@ -17,7 +17,8 @@ username = "dharma"
 controller_ip = "155.98.37.91"
 i=0
 deployed_list = []
-
+in_progress = {}
+ready = {}
 
 @app.route('/', methods=['GET'])
 def home():
@@ -27,19 +28,10 @@ def home():
 @app.route('/api/create', methods=['GET'])
 def runContainer():
     host_ip = request.args['host_ip']
-    src_ip = request.args['src_ip']
-    dst_ip = request.args['dst_ip']
-    src_port = request.args['src_port']
-    dst_port = request.args['dst_port']
-    protocol = request.args['protocol']
     
-    if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
-        return "Already Runnning Container",200
-    
-    deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
-    deployed_list.append(deployment)
-    
-    print("Starting Deployment in switch : %s" , str(host_ip))
+    if in_progress.get(host_ip) is None:
+        in_progress[host_ip] = []
+    print("Starting Deployment in switch : " , str(host_ip))
     global i
     try:
         i = i+1
@@ -47,10 +39,11 @@ def runContainer():
         apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
-        print("Container Deployed with id: %s" + container.id)
-        runPigRelay(container)
+        in_progress.get(host_ip).append(container.id)
+        print("Container Deployed with id: " + container.id)
+        #runPigRelay(container)
         bridge_name = str(container.name)[:str(container.name).find('_')]
-        print('bridge Name : %s', bridge_name)
+        print('bridge Name : ', bridge_name)
         print("Adding Commands")
         commands = []
         commands.append('ovs-vsctl add-br ' + bridge_name)
@@ -68,10 +61,16 @@ def runContainer():
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
-            if startSnort(container):
-                print("Deployed Container for:" + str(deployment))
-                print("Total Deployments:" + str(deployed_list))
-                return deployment,201
+            if ready.get(host_ip) is None
+                ready[host_ip] = []
+            ready.get(host_ip).append(container.id)
+            in_progress.get(host_ip).remove(container.id)
+            print("Container Ready on Host:" + host_ip)
+            return "True",200
+            #if startSnort(container):
+                #print("Deployed Container for:" + str(deployment))
+                #print("Total Deployments:" + str(deployed_list))
+                #return deployment,201
 
         return "False",400
 
@@ -89,7 +88,7 @@ def runContainer():
     except docker.errors.APIError:
         print("Connection to the docker Deamon not successful")
         return "False",400
-    
+
 def runSSH(host_ip,commands):
     # initialize the SSH client
     client = paramiko.SSHClient()
@@ -118,29 +117,8 @@ def runSSH(host_ip,commands):
             print(err)
             return False
     return True
- 
-def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
-    test1 = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
-    test2 = {"src_ip": dst_ip, "dst_ip":src_ip, "src_port": dst_port, "dst_port": src_port, "protocol": protocol}
-    for i in range(len(deployed_list)): 
-        if test1==deployed_list[i] or test2==deployed_list[i]:
-            print("Deployment already exist in the switch")
-            return True
-    return False  
 
-def startSnort(container):
-    try:
-        print("Runing snort in : %s",container.id)
-        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
-        print("Finished Running snort with exit-code: %s" + str(result.exit_code))
 
-        #for line in result:
-        #       print('%s',line)
-        return True
-    except docker.errors.ContainerError:
-        print("Error in container execution")
-        return False;
-    
 def downloadImage(client,imageName,tag):
     try:
         print("="*25, "Downloading Docker Image ",imageName, "="*25)
@@ -153,6 +131,62 @@ def downloadImage(client,imageName,tag):
     except docker.errors.APIError:
         print("Connection to the docker Deamon not successful")
         return False
+
+
+@app.route('/api/start', methods=['GET'])
+def startSnort():
+    host_ip = request.args['host_ip']
+    src_ip = request.args['src_ip']
+    dst_ip = request.args['dst_ip']
+    src_port = request.args['src_port']
+    dst_port = request.args['dst_port']
+    protocol = request.args['protocol']
+    
+    if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
+        return "Already Runnning Container",200
+    
+    deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
+    deployed_list.append(deployment)
+
+    while len(ready.get(host_ip)) == 0:
+        time.sleep(1)
+    container_id = ready.get(host_ip).pop(0)
+    
+    print("Starting Snort Run on Host:" + host_ip " and container : " + container_id) 
+    try:
+        tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
+        apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
+        dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
+        container = dockerClient.containers.get(container_id)
+        runPigRelay(container)
+        print("Runing snort in : %s",container.id)
+        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
+        print("Finished Running snort with exit-code: %s" + str(result.exit_code))
+        print("Deployed Container for:" + str(deployment))
+        print("Total Deployments:" + str(deployed_list))
+        return "True",201
+
+        #for line in result:
+        #       print('%s',line)
+        #return True
+    except docker.errors.ContainerError:
+        print("Error in container execution")
+        return "False",400;
+    
+    except docker.errors.APIError:
+        print("Connection to the docker Deamon not successful")
+        return "False",400
+
+
+def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
+    test1 = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
+    test2 = {"src_ip": dst_ip, "dst_ip":src_ip, "src_port": dst_port, "dst_port": src_port, "protocol": protocol}
+    for i in range(len(deployed_list)): 
+        if test1==deployed_list[i] or test2==deployed_list[i]:
+            print("Deployment already exist in the switch")
+            return True
+    return False  
+
 
 def runPigRelay(container):
     result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.37.91/g\' pigrelay.py"')
