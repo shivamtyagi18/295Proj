@@ -95,12 +95,13 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         dstip = ip.dst
         protocol = ip.proto
         print(srcip, dstip)
-        match3 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=srcip, ipv4_dst=dstip)
-        match4 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=dstip, ipv4_dst=srcip)
-        actions3 = []
-        self.add_flow(switch_datapath, 1, match3, actions3)
-        self.add_flow(switch_datapath, 1, match4, actions3)
-        print("Rules deleted for container alert" + str(ev.addr))
+        if protocol == in_proto.IPPROTO_ICMP:
+            match3 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=srcip, ipv4_dst=dstip)
+            match4 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=dstip, ipv4_dst=srcip)
+            actions3 = []
+            self.add_flow(switch_datapath, 1, match3, actions3)
+            self.add_flow(switch_datapath, 1, match4, actions3)
+            print("Rules deleted for container alert" + str(ev.addr))
 
         #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
@@ -127,6 +128,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
+        url = "http://127.0.0.1:5000/api/create"
+        params = {'host_ip': address[0]}
+        r = requests.get(url=url, params=params)
+
 
     def add_flow(self, datapath, priority, match, actions):
         ofproto = datapath.ofproto
@@ -231,7 +236,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
 
                 deployed_list.append(deployment)
                 print("calling container switch" + str(switch_addr[0]))
-                url = "http://127.0.0.1:5000/api/create"
+                url = "http://127.0.0.1:5000/api/start"
                 r = requests.get(url=url, params=params)
                 print(r)
 
