@@ -6,6 +6,7 @@ from io import BytesIO
 import paramiko
 import logging
 import flask
+import glob
 from flask import request, jsonify
 
 app = flask.Flask(__name__)
@@ -19,6 +20,8 @@ i=0
 deployed_list = []
 in_progress = {}
 ready = {}
+tarFiles = {}
+apiclient = None
 
 @app.route('/', methods=['GET'])
 def home():
@@ -36,7 +39,7 @@ def runContainer():
     try:
         i = i+1
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
-        apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
+        #apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
         in_progress.get(host_ip).append(container.id)
@@ -61,7 +64,7 @@ def runContainer():
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
-            if ready.get(host_ip) is None
+            if ready.get(host_ip) is None:
                 ready[host_ip] = []
             ready.get(host_ip).append(container.id)
             in_progress.get(host_ip).remove(container.id)
@@ -145,6 +148,8 @@ def startSnort():
     if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
         return "Already Runnning Container",200
     
+    setid = getSnortSet(src_port,dst_port,protocol)
+
     deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
     deployed_list.append(deployment)
 
@@ -152,15 +157,17 @@ def startSnort():
         time.sleep(1)
     container_id = ready.get(host_ip).pop(0)
     
-    print("Starting Snort Run on Host:" + host_ip " and container : " + container_id) 
+    print("Starting Snort Run on Host:" + host_ip + " and container : " + container_id) 
     try:
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.get(container_id)
         runPigRelay(container)
+        #command = 'sh -c '
+        #command += '\'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:et2\''
         print("Runing snort in : %s",container.id)
-        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
+        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/' + setid + '_snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
         print("Finished Running snort with exit-code: %s" + str(result.exit_code))
         print("Deployed Container for:" + str(deployment))
         print("Total Deployments:" + str(deployed_list))
@@ -177,6 +184,11 @@ def startSnort():
         print("Connection to the docker Deamon not successful")
         return "False",400
 
+def getSnortSet(scr_port,dst_port,protocol):
+    if(protocol == 'tcp'):
+        return 'set18'
+    else:
+        return 'set10'
 
 def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
     test1 = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
@@ -197,24 +209,24 @@ def runPigRelay(container):
     
 def changeRules(filename,container):
     print("Changing Rules for container:" + container.id)
-    tarFile = getTarFile(filename)
+    tarFile = tarFiles.get(filename)
     copyFile(container,tarFile)
     
     
 def getTarFile(fileName):
-    allRules = 'These are my rules'
-    print (allRules)
+    print("Making a tar file for: " + fileName)
+    demofile = open('/usr/local/295Proj/' + fileName , "r")
+    #print (allRules)
     #write password to file
     pw_tarstream = BytesIO()
     pw_tar = tarfile.TarFile(fileobj=pw_tarstream, mode='w')
-    file_data = allRules.encode('utf8')
-    tarinfo = tarfile.TarInfo(name=str(fileName) + '.rules')
+    file_data = demofile.read().encode('utf8')
+    tarinfo = tarfile.TarInfo(name=str(fileName))
     tarinfo.size = len(file_data)
     tarinfo.mtime = time.time()
     pw_tar.addfile(tarinfo, BytesIO(file_data))
     pw_tar.close()
-    
-    return pw_tarstream
+    tarFiles[fileName] = pw_tarstream
 
 def copyFile(container,tarFile):
     print("Copying file to container :" + container.id)
@@ -247,9 +259,11 @@ def stopSnort(container):
 #changeRules("kiran",container)
 #runContainer(host_ip,'1234','tcp')
 
+os.chdir("/usr/local/295Proj")
+for file in glob.glob("*.rules"):
+    getTarFile(file)
 
-
-
+print("No Of Rules Files: " + str(len(tarFiles)))
 
 print("App starting with Controller IP: " + controller_ip)
 
