@@ -39,8 +39,10 @@ import os
 import random
 import time
 
-
+#dictionary used to deploy OpenFlow rules for alerts
 Switch_dict = {} 
+
+#List to check if container deployed for the same traffic. 
 deployed_list = []
 
 class SimpleSwitchSnort(app_manager.RyuApp):
@@ -57,37 +59,18 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         self.snort.set_config(socket_config)
         self.snort.start_socket_server()
 
-    def packet_print(self, pkt):
-        pkt = packet.Packet(array.array('B', pkt))
-
-        eth = pkt.get_protocol(ethernet.ethernet)
-        _ipv4 = pkt.get_protocol(ipv4.ipv4)
-        _icmp = pkt.get_protocol(icmp.icmp)
-
-        if _icmp:
-            self.logger.info("%r", _icmp)
-
-        if _ipv4:
-            self.logger.info("%r", _ipv4)
-
-        if eth:
-            self.logger.info("%r", eth)
-
-        # for p in pkt.protocols:
-        #     if hasattr(p, 'protocol_name') is False:
-        #         break
-        #     print('p: %s' % p.protocol_name)
 
     @set_ev_cls(snortlib.EventAlert, MAIN_DISPATCHER)
     def _dump_alert(self, ev):
+
         print("Alert received from container:" + str(ev.addr))
         msg = ev.msg
-        print(ev)
-        print(ev.addr)
         switch_datapath = Switch_dict.get(ev.addr)
-        print(switch_datapath)
         parser = switch_datapath.ofproto_parser
         ofproto = switch_datapath.ofproto
+        
+        #fetch packet details for match params to add OpenFlow rules
+        
         pkt = msg.pkt
         pkt = packet.Packet(array.array('B', pkt))
         ip = pkt.get_protocol(ipv4.ipv4)
@@ -95,6 +78,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         dstip = ip.dst
         protocol = ip.proto
         print(srcip, dstip)
+        
+        #if different rules for different protocols. Allows traffic on specific port to be dropped based on protocol.  
+        
+        
         if protocol == in_proto.IPPROTO_ICMP:
             match3 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=srcip, ipv4_dst=dstip)
             match4 = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, ip_proto=protocol, ipv4_src=dstip, ipv4_dst=srcip)
@@ -103,9 +90,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
             self.add_flow(switch_datapath, 1, match4, actions3)
             print("Rules deleted for container alert" + str(ev.addr))
 
-        #print('alertmsg: %s' % ''.join(msg.alertmsg))
 
-        #self.packet_print(msg.pkt)
+
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -128,6 +114,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
+        
+        
+        # call to deploy a container when a switch connects to the controller
         url = "http://127.0.0.1:5000/api/create"
         params = {'host_ip': address[0]}
         r = requests.get(url=url, params=params)
@@ -156,6 +145,10 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                                 match=match)
         datapath.send_msg(mod)
         print("Flow rules deleted for modification in " + str(datapath.address[0]) + "  match:  "+ str(match) )
+
+
+
+    #Function to check if there's any container deployed for same kind of flow in a switch
 
     def checkDeployment(self, switch_addr, src_ip,dst_ip,src_port,dst_port,protocol):
         test1 = {"switch_addr": switch_addr, "src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
@@ -189,6 +182,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
             if src not in self.mac_to_port[dpid]:
                 self.mac_to_port[dpid][src] = in_port
 
+
+        #Generic flow rule addition if there's no container running in the switch for any protocol 
+        
         if dst in self.mac_to_port[dpid]:
                 out_port = self.mac_to_port[dpid][dst]
         else:
@@ -198,6 +194,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         actions_return = [parser.OFPActionOutput(in_port)]
 
         switch_addr = datapath.address
+        
         # install a flow to avoid packet_in next time
         if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33'):
 
@@ -207,7 +204,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                 dstip = ip.dst
                 protocol = ip.proto
                 print("Packet inside: " + str(srcip) +" "+ str(dstip) +" "+ str(protocol))
-                # if ICMP Protocol
+              
+              
+              # if ICMP Protocol
                 if protocol == in_proto.IPPROTO_ICMP:
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
                     match_return = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=out_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol)
@@ -215,7 +214,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     if self.checkDeployment(datapath.address[0],srcip,dstip,"0","0",protocol):
                         return 
                     params = {'host_ip': switch_addr[0], 'src_ip': srcip, 'dst_ip': dstip, 'protocol' : protocol, 'src_port' : "0", 'dst_port' : "0"}
-                #  if TCP Protocol
+             
+             
+             #  if TCP Protocol
                 elif protocol == in_proto.IPPROTO_TCP:
                     t = pkt.get_protocol(tcp.tcp)
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, tcp_src=t.src_port, tcp_dst=t.dst_port, )
@@ -224,7 +225,9 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     deployment = {"switch_addr": datapath.address[0], "src_ip": srcip, "dst_ip":dstip, "src_port": tcp_src, "dst_port": tcp_dst, "protocol": protocol}
                     if self.checkDeployment(datapath.address[0], srcip,dstip,tcp_src,tcp_dst,protocol):
                         return 
-                    #  If UDP Protocol
+            
+            
+            #  If UDP Protocol
                 elif protocol == in_proto.IPPROTO_UDP:
                     u = pkt.get_protocol(udp.udp)
                     match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_IP, in_port=in_port, ipv4_src=srcip, ipv4_dst=dstip, ip_proto=protocol, udp_src=u.src_port, udp_dst=u.dst_port, )
@@ -234,6 +237,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                     if self.checkDeployment(datapath.address[0], srcip,dstip,udp_src,udp_dst,protocol):
                         return
 
+
+            #Call to orchestrator to start snort
                 deployed_list.append(deployment)
                 print("calling container switch" + str(switch_addr[0]))
                 url = "http://127.0.0.1:5000/api/start"
@@ -246,12 +251,17 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                 match_return = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP, in_port=out_port, eth_dst=src, eth_src=dst)
                 r = requests.Response()
 
+
             if out_port != ofproto.OFPP_FLOOD:
                 self.add_flow(datapath, 1, match, actions)
                 self.add_flow(datapath, 1, match_return, actions_return)
 
             ports = len(datapath.ports) - 1
             self.snort_port = ports
+
+            #Check if Snort started by orchestrator and change flow rules accordingly
+
+
             if ( (r.status_code is not None) and (r.status_code == 201) ) :
                 # check IP Protocol and create a match for IP
                 if eth.ethertype == ether_types.ETH_TYPE_IP:

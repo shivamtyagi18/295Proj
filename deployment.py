@@ -7,11 +7,14 @@ import paramiko
 import logging
 import flask
 import glob
+import urllib3
+import threading
 from flask import request, jsonify
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
 
+urllib3.disable_warnings()
 
 #logging.basicConfig(filename='deployment.log', filemode='w', level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
 username = "dharma"
@@ -30,14 +33,23 @@ def home():
     
 @app.route('/api/create', methods=['GET'])
 def runContainer():
+    start_time = time.time()
     host_ip = request.args['host_ip']
-    
+    if runContainerHelper(host_ip):
+        print("----------------------- %s seconds --------------------------"  % (time.time() - start_time))
+        return "True",200
+    else:
+        return "False",400
+
+def runContainerHelper(host_ip):
     if in_progress.get(host_ip) is None:
         in_progress[host_ip] = []
-    print("Starting Deployment in switch : " , str(host_ip))
-    global i
+    print("="*25,"Starting Deployment in switch : " , str(host_ip),"="*25)
     try:
-        i = i+1
+        if ready.get(host_ip) is None:
+            ready[host_ip] = []
+        veth0 = str(len(ready[host_ip])*2)
+        veth1 = str(len(ready[host_ip])*2+1)
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         #apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
@@ -55,42 +67,40 @@ def runContainer():
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' dl_type=0x0806,actions=drop')
         commands.append('ovs-docker add-port '+ bridge_name +' eth1 ' + str(container.name))
         commands.append('ovs-docker add-port '+ bridge_name +' eth2 ' + str(container.name))
-        commands.append('ip link add veth0 type veth peer name veth1')
-        commands.append('ifconfig veth1 up')
-        commands.append('ifconfig veth0 up')
-        commands.append('ovs-vsctl add-port ' + bridge_name + ' veth1')
-        commands.append('ovs-vsctl add-port ovs-lan veth0')
+        commands.append('ip link add veth' + veth0 +' type veth peer name veth' + veth1)
+        commands.append('ifconfig veth' + veth0 +' up')
+        commands.append('ifconfig veth' + veth1 +' up')
+        commands.append('ovs-vsctl add-port ' + bridge_name + ' veth' + veth1)
+        commands.append('ovs-vsctl add-port ovs-lan veth' + veth0)
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
         print("Starting ssh commands")
         if runSSH(host_ip,commands):
-            if ready.get(host_ip) is None:
-                ready[host_ip] = []
             ready.get(host_ip).append(container.id)
             in_progress.get(host_ip).remove(container.id)
             print("Container Ready on Host:" + host_ip)
-            return "True",200
+            return True
             #if startSnort(container):
                 #print("Deployed Container for:" + str(deployment))
                 #print("Total Deployments:" + str(deployed_list))
                 #return deployment,201
 
-        return "False",400
+        return False
 
     except docker.errors.ContainerError:
         print("Error in container execution")
-        return "False",400;
+        return False
 
     except docker.errors.ImageNotFound:
         if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
             runContainer(host_ip,switch_id,protocol)
         else:
             print("Error Downloading Image")
-            return "False",400
+            return False
 
     except docker.errors.APIError:
         print("Connection to the docker Deamon not successful")
-        return "False",400
+        return False
 
 def runSSH(host_ip,commands):
     # initialize the SSH client
@@ -138,6 +148,7 @@ def downloadImage(client,imageName,tag):
 
 @app.route('/api/start', methods=['GET'])
 def startSnort():
+    start_time = time.time()
     host_ip = request.args['host_ip']
     src_ip = request.args['src_ip']
     dst_ip = request.args['dst_ip']
@@ -148,16 +159,22 @@ def startSnort():
     if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
         return "Already Runnning Container",200
     
+    try:
+        t = threading.Thread(target=runContainerHelper,args=(host_ip,))
+        t.start()
+    except:
+        print("Error: unable to start thread")
+    
     setid = getSnortSet(src_port,dst_port,protocol)
 
     deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
     deployed_list.append(deployment)
 
     while len(ready.get(host_ip)) == 0:
-        time.sleep(1)
+        time.sleep(1) 
     container_id = ready.get(host_ip).pop(0)
     
-    print("Starting Snort Run on Host:" + host_ip + " and container : " + container_id) 
+    print("="*25,"Starting Snort Run on Host:" + host_ip + " and container : " + container_id,"="*25)
     try:
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
@@ -167,10 +184,11 @@ def startSnort():
         #command = 'sh -c '
         #command += '\'snort -A unsock -l /tmp -c /etc/snort/snort.conf -Q -i eth1:et2\''
         print("Runing snort in : %s",container.id)
-        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/' + setid + '_snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
+        result = container.exec_run('sh -c \'snort -A unsock -l /tmp -c /etc/snort/set10_snort.conf -Q -i eth1:eth2\'',detach=True,tty=True)
         print("Finished Running snort with exit-code: %s" + str(result.exit_code))
         print("Deployed Container for:" + str(deployment))
         print("Total Deployments:" + str(deployed_list))
+        print("----------------------- %s seconds --------------------------"  % (time.time() - start_time))
         return "True",201
 
         #for line in result:
@@ -185,6 +203,7 @@ def startSnort():
         return "False",400
 
 def getSnortSet(scr_port,dst_port,protocol):
+    print("+"*10, "Protocol value :", str(protocol), "+"*10)
     if(protocol == 'tcp'):
         return 'set18'
     else:
