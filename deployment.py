@@ -16,13 +16,24 @@ app.config["DEBUG"] = True
 
 urllib3.disable_warnings()
 
-#logging.basicConfig(filename='deployment.log', filemode='w', level=logging.DEBUG,format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
+
+#update username to use for login to Cloudlabs - must be a valid cloudlabs username
 username = "dharma"
+
+#update the controller's IP address here
 controller_ip = "155.98.37.91"
 i=0
+
+#dictionary to keep track of flows for which a container is deployed and snort is started
 deployed_list = []
+
+#list for the lsit of containers being deployed 
 in_progress = {}
+
+#list to keep the list of containers ready to be used
 ready = {}
+
+#list for tar file of rules for Snort
 tarFiles = {}
 apiclient = None
 
@@ -31,35 +42,47 @@ def home():
     print("args are:" + str(request.args))
     return '<h1>Distant Reading Archive</h1><p>A prototype API for distant reading of science fiction novels.</p>'
     
+
+#API to create a container inside a switch.
 @app.route('/api/create', methods=['GET'])
 def runContainer():
     start_time = time.time()
     host_ip = request.args['host_ip']
+
+    #Function call to deploy a container
     if runContainerHelper(host_ip):
         print("----------------------- %s seconds --------------------------"  % (time.time() - start_time))
         return "True",200
     else:
         return "False",400
 
+
+#Function definition to deploy a container inside the switch with IP address "host_ip"
 def runContainerHelper(host_ip):
-    if in_progress.get(host_ip) is None:
-        in_progress[host_ip] = []
+    if in_progress.get(host_ip) is None: 
+        in_progress[host_ip] = []   #create in_progress
     print("="*25,"Starting Deployment in switch : " , str(host_ip),"="*25)
     try:
         if ready.get(host_ip) is None:
-            ready[host_ip] = []
+            ready[host_ip] = []     #create ready
+
+        #code to calculate the existing veth in switch to deploy new veth. The format if vethx, x being a number.
         veth0 = str(len(ready[host_ip])*2)
         veth1 = str(len(ready[host_ip])*2+1)
+
+        #TLS handshake for authentication to deploy a container.
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         #apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         container = dockerClient.containers.run('dharmadheeraj/sdnnfv',cap_add=['NET_ADMIN','NET_RAW'],detach=True,tty=True);
-        in_progress.get(host_ip).append(container.id)
+        in_progress.get(host_ip).append(container.id)   #append container ID to in_progress as the deployment is in process
         print("Container Deployed with id: " + container.id)
         #runPigRelay(container)
-        bridge_name = str(container.name)[:str(container.name).find('_')]
+        bridge_name = str(container.name)[:str(container.name).find('_')]   #using container name to make a bridge name
         print('bridge Name : ', bridge_name)
         print("Adding Commands")
+
+        #commands to deploy a bridge for container, connect the container and bridge, and add flow rules to that bridge
         commands = []
         commands.append('ovs-vsctl add-br ' + bridge_name)
         #commands.append('ifconfig ' + bridge_name + ' up')
@@ -75,15 +98,13 @@ def runContainerHelper(host_ip):
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=3,actions=output:1')
         commands.append('ovs-ofctl add-flow ' + bridge_name + ' in_port=2,actions=output:3')
         print("Starting ssh commands")
+
+        #Create a SSH connection to run the above commands
         if runSSH(host_ip,commands):
-            ready.get(host_ip).append(container.id)
+            ready.get(host_ip).append(container.id)     #once container is ready, append the container ID to ready list and remove it from in_progress
             in_progress.get(host_ip).remove(container.id)
             print("Container Ready on Host:" + host_ip)
             return True
-            #if startSnort(container):
-                #print("Deployed Container for:" + str(deployment))
-                #print("Total Deployments:" + str(deployed_list))
-                #return deployment,201
 
         return False
 
@@ -91,6 +112,7 @@ def runContainerHelper(host_ip):
         print("Error in container execution")
         return False
 
+    #Look for the specific docker image. The imahe should already be present inside the switch to reduce the delays.
     except docker.errors.ImageNotFound:
         if downloadImage(dockerClient,'dharmadheeraj/sdnnfv','latest'):
             runContainer(host_ip,switch_id,protocol)
@@ -102,12 +124,13 @@ def runContainerHelper(host_ip):
         print("Connection to the docker Deamon not successful")
         return False
 
+#Function definition to initiate a SSH connection from controller to switch
 def runSSH(host_ip,commands):
     # initialize the SSH client
     client = paramiko.SSHClient()
     print("Getting Private token")
     try:
-        k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")
+        k = paramiko.RSAKey.from_private_key_file("/usr/local/dharma")  #Make sure right private key file is mapped. The file name is dharma in this case
         # add to known hosts
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         # Initiate Connection
@@ -146,9 +169,13 @@ def downloadImage(client,imageName,tag):
         return False
 
 
+
+#API call to start snort inside a container
 @app.route('/api/start', methods=['GET'])
 def startSnort():
     start_time = time.time()
+
+    #fetch packet parameters to keep track of flow and use right set of Snort rules.
     host_ip = request.args['host_ip']
     src_ip = request.args['src_ip']
     dst_ip = request.args['dst_ip']
@@ -156,8 +183,8 @@ def startSnort():
     dst_port = request.args['dst_port']
     protocol = request.args['protocol']
     
-    if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
-        return "Already Runnning Container",200
+    if checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):       #function to check if any container deployed in a switch for a specific flow
+        return "Already Runnning Container",200                         #if container present, return. Else continue
     
     try:
         t = threading.Thread(target=runContainerHelper,args=(host_ip,))
@@ -165,10 +192,10 @@ def startSnort():
     except:
         print("Error: unable to start thread")
     
-    setid = getSnortSet(src_port,dst_port,protocol)
+    setid = getSnortSet(src_port,dst_port,protocol)             #function to fetch the set number of Snort rules
 
     deployment = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
-    deployed_list.append(deployment)
+    deployed_list.append(deployment)                            #append the flow params to the dictionary
 
     while len(ready.get(host_ip)) == 0:
         time.sleep(1) 
@@ -176,6 +203,8 @@ def startSnort():
     
     print("="*25,"Starting Snort Run on Host:" + host_ip + " and container : " + container_id,"="*25)
     try:
+
+        #tls authentication to start snort inside a container
         tls_config = docker.tls.TLSConfig(ca_cert='/usr/local/ca.pem' , client_cert=('/usr/local/client-cert.pem', '/usr/local/client-key.pem'))
         apiclient = docker.APIClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
         dockerClient = docker.DockerClient(base_url='tcp://' + host_ip +':2376',version="1.39",tls=tls_config)
@@ -202,13 +231,18 @@ def startSnort():
         print("Connection to the docker Deamon not successful")
         return "False",400
 
+
+#Function definition to select a snort rule set based on packet params
 def getSnortSet(scr_port,dst_port,protocol):
     print("+"*10, "Protocol value :", str(protocol), "+"*10)
+    
+    #decision logic to select the set number. Only basic selected, more intricate logic to be written
     if(protocol == 'tcp'):
         return 'set18'
     else:
         return 'set10'
 
+#Function to check if there's a container running for that specific flow
 def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
     test1 = {"src_ip": src_ip, "dst_ip":dst_ip, "src_port": src_port, "dst_port": dst_port, "protocol": protocol}
     test2 = {"src_ip": dst_ip, "dst_ip":src_ip, "src_port": dst_port, "dst_port": src_port, "protocol": protocol}
@@ -218,14 +252,16 @@ def checkDeployment(src_ip,dst_ip,src_port,dst_port,protocol):
             return True
     return False  
 
-
+#Function definition to start Pigrelay code
 def runPigRelay(container):
     result = container.exec_run('sh -c "sed -i \'s/172.17.0.1/155.98.37.91/g\' pigrelay.py"')
     print("Changed pigrelay file with error code:" + str(result.exit_code))
     result2 = container.exec_run('sh -c \'python pigrelay.py\'',detach=True,tty=True)
     print("Started Pigrelay with exit code:" + str(result2.exit_code))
     return
-    
+   
+
+#Function definitions to change the rules files inside containers
 def changeRules(filename,container):
     print("Changing Rules for container:" + container.id)
     tarFile = tarFiles.get(filename)
@@ -256,6 +292,8 @@ def copyFile(container,tarFile):
         data=tarFile
         )
 
+
+#Function to restart snort inside a container. using container ID
 def stopSnort(container):
     stop = container.exec_run('sh -c "ps aux | awk {\'print $11 $2\'} | grep ^snort"' ,stderr=True,stdout=True,workdir="/")
     process_id = str(stop.output, 'utf-8')[5:]

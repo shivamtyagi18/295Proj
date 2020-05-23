@@ -57,11 +57,11 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         socket_config = {'unixsock': False}
 
         self.snort.set_config(socket_config)
-        self.snort.start_socket_server()
+        self.snort.start_socket_server()            #server to receive alerts from any container pigrelay
 
 
     @set_ev_cls(snortlib.EventAlert, MAIN_DISPATCHER)
-    def _dump_alert(self, ev):
+    def _dump_alert(self, ev):                      #code to deploy Openflow rules based on Snort alerts
 
         print("Alert received from container:" + str(ev.addr))
         msg = ev.msg
@@ -100,6 +100,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
+
+        #append the switch address to Switch_dict
         Switch_dict[address[0]] = {}
         Switch_dict[address[0]] = datapath
 
@@ -196,6 +198,7 @@ class SimpleSwitchSnort(app_manager.RyuApp):
         switch_addr = datapath.address
         
         # install a flow to avoid packet_in next time
+        # adding both to and fo rules at once to avoid repeat snort calls 
         if (out_port != ofproto.OFPP_FLOOD) and (str(dst)[:5] != '33:33'):
 
             if eth.ethertype == ether_types.ETH_TYPE_IP:
@@ -245,7 +248,8 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                 r = requests.get(url=url, params=params)
                 print(r)
 
-            # verify if we have a valid buffer_id, if yes avoid to send both
+            
+            #adding flow rule for arp packets
             if eth.ethertype == ether_types.ETH_TYPE_ARP:
                 match = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP, in_port=in_port, eth_dst=dst, eth_src=src)
                 match_return = parser.OFPMatch(eth_type=ether_types.ETH_TYPE_ARP, in_port=out_port, eth_dst=src, eth_src=dst)
@@ -256,10 +260,12 @@ class SimpleSwitchSnort(app_manager.RyuApp):
                 self.add_flow(datapath, 1, match, actions)
                 self.add_flow(datapath, 1, match_return, actions_return)
 
+            #calculate the number of ports and create a snort_port
             ports = len(datapath.ports) - 1
             self.snort_port = ports
 
             #Check if Snort started by orchestrator and change flow rules accordingly
+            #adding both to and fro flow rules from source to destination
 
 
             if ( (r.status_code is not None) and (r.status_code == 201) ) :
