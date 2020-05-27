@@ -1,5 +1,5 @@
 import os
-'''
+
 loop_num = int(os.popen("ovs-vsctl show | grep Bridge | awk '{print $2}' | wc -l").read())
 print(loop_num)
 while loop_num > 0:
@@ -12,7 +12,7 @@ while loop_num > 0:
 
 os.system("docker stop $(docker ps -a -q)")
 os.system("docker rm $(docker ps -a -q)")
-'''
+
 int_num = int(os.popen("ifconfig -a | grep veth | awk '{print $1}' | wc -l").read())
 if int_num > 2:
     os.system("sudo ip link del veth0")
